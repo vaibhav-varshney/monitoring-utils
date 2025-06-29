@@ -6,7 +6,8 @@ export class SalesforceService {
 
   constructor(loginUrl: string) {
     this.connection = new Connection({
-      version: '58.0'
+      loginUrl: loginUrl,
+      version: '58.0',
     });
   }
 
@@ -16,6 +17,7 @@ export class SalesforceService {
       console.log('✅ Successfully connected to Salesforce');
     } catch (error) {
       console.log(username, password);
+      console.error('🔁 Login URL used:', this.connection.loginUrl);
       throw new Error(`Failed to login to Salesforce: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -25,9 +27,10 @@ export class SalesforceService {
       const soql = `
         SELECT Id, Name, Component_Screenshot_URL__c, HTML_Source__c, Screenshot_URL__c
         FROM AQUA_ViolationGroup__c
-        WHERE Component_Screenshot_URL__c != null 
-           OR HTML_Source__c != null 
-           OR Screenshot_URL__c != null
+        WHERE (Component_Screenshot_URL__c != null 
+            OR HTML_Source__c != null 
+            OR Screenshot_URL__c != null)
+          AND Work_Status__c != 'Closed'
         ORDER BY Name
       `;
 

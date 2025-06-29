@@ -5,7 +5,8 @@ const jsforce_1 = require("jsforce");
 class SalesforceService {
     constructor(loginUrl) {
         this.connection = new jsforce_1.Connection({
-            version: '58.0'
+            loginUrl: loginUrl,
+            version: '58.0',
         });
     }
     async login(username, password) {
@@ -15,6 +16,7 @@ class SalesforceService {
         }
         catch (error) {
             console.log(username, password);
+            console.error('🔁 Login URL used:', this.connection.loginUrl);
             throw new Error(`Failed to login to Salesforce: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
@@ -23,14 +25,23 @@ class SalesforceService {
             const soql = `
         SELECT Id, Name, Component_Screenshot_URL__c, HTML_Source__c, Screenshot_URL__c
         FROM AQUA_ViolationGroup__c
-        WHERE Component_Screenshot_URL__c != null 
-           OR HTML_Source__c != null 
-           OR Screenshot_URL__c != null
+        WHERE (Component_Screenshot_URL__c != null 
+            OR HTML_Source__c != null 
+            OR Screenshot_URL__c != null)
+          AND Work_Status__c != 'Closed'
         ORDER BY Name
       `;
-            const result = await this.connection.query(soql);
-            console.log(`📊 Found ${result.totalSize} AQUA ViolationGroup records with URLs`);
-            return result.records;
+            // Handle pagination manually to get all records
+            let allRecords = [];
+            let result = await this.connection.query(soql);
+            allRecords = allRecords.concat(result.records);
+            // Continue fetching remaining records if more exist
+            while (!result.done && result.nextRecordsUrl) {
+                result = await this.connection.queryMore(result.nextRecordsUrl);
+                allRecords = allRecords.concat(result.records);
+            }
+            console.log(`📊 Found ${allRecords.length} AQUA ViolationGroup records with URLs`);
+            return allRecords;
         }
         catch (error) {
             throw new Error(`Failed to query AQUA ViolationGroup records: ${error instanceof Error ? error.message : String(error)}`);

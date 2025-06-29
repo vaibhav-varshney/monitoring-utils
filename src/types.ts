@@ -31,6 +31,7 @@ export interface MonitoringReport {
       total: number;
       healthy: number;
       broken: number;
+      notAvailable: number;
     };
   };
   detailedResults: ViolationGroupResult[];

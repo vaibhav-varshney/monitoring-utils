@@ -18,8 +18,8 @@ class URLChecker {
     async checkURL(url, urlType) {
         const startTime = Date.now();
         try {
-            // Special handling for HTML_Source__c URLs (similar to sample.ts logic)
-            if (urlType === 'HTML_Source__c' && this.isAbsctlURL(url)) {
+            // Check if this is an absctl URL for any URL type
+            if (this.isAbsctlURL(url)) {
                 return await this.checkAbsctlURL(url, urlType, startTime);
             }
             // Standard HTTP/HTTPS URL check
@@ -97,7 +97,6 @@ class URLChecker {
             console.log('🍪 No data store cookies configured');
             return '';
         }
-        console.log(`🍪 Using configured cookies for data store requests`);
         return cookies;
     }
     async checkAbsctlURL(url, urlType, startTime) {
@@ -138,19 +137,52 @@ class URLChecker {
             const env = { ...process.env };
             if (cookies) {
                 env.COOKIE = cookies;
-                console.log(`🍪 Using browser cookies for absctl request`);
             }
             try {
                 const { stdout, stderr } = await this.execAsync(command, {
                     timeout: this.config.requestTimeoutMs,
                     env: env
                 });
+                // Check for "no logs found" or similar messages in stdout/stderr
+                const output = (stdout + stderr).toLowerCase();
+                const noLogsPatterns = [
+                    'no logs found',
+                    'logs not found',
+                    'no files found',
+                    'file not found',
+                    'nothing to download',
+                    'no such file',
+                    'failed to find',
+                    'download failed'
+                ];
+                const hasNoLogsMessage = noLogsPatterns.some(pattern => output.includes(pattern));
+                if (hasNoLogsMessage) {
+                    return {
+                        url,
+                        urlType,
+                        isHealthy: false,
+                        error: 'No logs found for the specified filename and runID',
+                        responseTime: Date.now() - startTime
+                    };
+                }
                 // Check if file was downloaded successfully
                 const filePath = path_1.default.join(tempDir, filename);
                 const fileExists = await promises_1.default.access(filePath).then(() => true).catch(() => false);
                 if (fileExists) {
+                    // Check if the file has content (not empty)
+                    const stats = await promises_1.default.stat(filePath);
+                    const fileSize = stats.size;
                     // Clean up the downloaded file
                     await promises_1.default.unlink(filePath).catch(() => { });
+                    if (fileSize === 0) {
+                        return {
+                            url,
+                            urlType,
+                            isHealthy: false,
+                            error: 'Downloaded file is empty - no content available',
+                            responseTime: Date.now() - startTime
+                        };
+                    }
                     return {
                         url,
                         urlType,

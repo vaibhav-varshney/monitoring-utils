@@ -62,14 +62,15 @@ export class Reporter {
     console.log('-'.repeat(50));
     
     const table = new Table({
-      head: ['URL Type', 'Total', 'Healthy', 'Broken', 'Health %'],
-      colWidths: [30, 8, 10, 10, 12]
+      head: ['URL Type', 'Total', 'Healthy', 'Broken', 'Not Available', 'Health %'],
+      colWidths: [25, 8, 10, 10, 15, 12]
     });
 
     Object.entries(report.urlTypeSummary).forEach(([urlType, stats]) => {
       if (stats.total > 0) {
-        const healthPercent = ((stats.healthy / stats.total) * 100).toFixed(1);
-        const healthColor = stats.healthy === stats.total ? chalk.green : 
+        const availableCount = stats.total - stats.notAvailable;
+        const healthPercent = availableCount > 0 ? ((stats.healthy / availableCount) * 100).toFixed(1) : 'N/A';
+        const healthColor = stats.healthy === availableCount ? chalk.green : 
                            stats.healthy === 0 ? chalk.red : chalk.yellow;
         
         table.push([
@@ -77,7 +78,8 @@ export class Reporter {
           stats.total.toString(),
           healthColor(stats.healthy.toString()),
           stats.broken > 0 ? chalk.red(stats.broken.toString()) : '0',
-          healthColor(`${healthPercent}%`)
+          stats.notAvailable > 0 ? chalk.gray(stats.notAvailable.toString()) : '0',
+          healthPercent !== 'N/A' ? healthColor(`${healthPercent}%`) : chalk.gray('N/A')
         ]);
       }
     });
@@ -101,14 +103,27 @@ export class Reporter {
     Object.entries(report.urlTypeSummary).forEach(([urlType, stats]) => {
       if (stats.total > 0) {
         const displayName = urlTypeDisplayNames[urlType] || urlType.replace('__c', '');
-        const status = stats.broken === 0 ? '✅' : 
-                      stats.healthy === 0 ? '❌' : '⚠️';
+        const availableCount = stats.total - (stats.notAvailable || 0);
+        const status = stats.broken === 0 && availableCount > 0 ? '✅' : 
+                      stats.healthy === 0 && availableCount > 0 ? '❌' : '⚠️';
         
-        console.log(`${status} ${chalk.bold(displayName)}: ${chalk.green(stats.healthy)}/${stats.total} healthy, ${stats.broken > 0 ? chalk.red(`${stats.broken} broken`) : chalk.green('0 broken')}`);
-        
+        let statusText = `${chalk.green(stats.healthy)}/${stats.total} healthy`;
         if (stats.broken > 0) {
-          const brokenPercent = ((stats.broken / stats.total) * 100).toFixed(1);
-          console.log(`   ${chalk.red(`→ ${stats.broken}/${stats.total} ${displayName.toLowerCase()} are broken (${brokenPercent}%)`)}`);
+          statusText += `, ${chalk.red(`${stats.broken} broken`)}`;
+        }
+        if ((stats.notAvailable || 0) > 0) {
+          statusText += `, ${chalk.gray(`${stats.notAvailable} not available`)}`;
+        }
+        
+        console.log(`${status} ${chalk.bold(displayName)}: ${statusText}`);
+        
+        if (stats.broken > 0 && availableCount > 0) {
+          const brokenPercent = ((stats.broken / availableCount) * 100).toFixed(1);
+          console.log(`   ${chalk.red(`→ ${stats.broken}/${availableCount} available ${displayName.toLowerCase()} are broken (${brokenPercent}%)`)}`);
+        }
+        
+        if ((stats.notAvailable || 0) > 0) {
+          console.log(`   ${chalk.gray(`→ ${stats.notAvailable}/${stats.total} ${displayName.toLowerCase()} are not available in records`)}`);
         }
       }
     });
@@ -149,7 +164,7 @@ export class Reporter {
   private printRecordDetails(records: ViolationGroupResult[], status: 'broken' | 'partial'): void {
     const table = new Table({
       head: ['Record Name', 'Record ID', 'URL Type', 'Status', 'Error/Response Time'],
-      colWidths: [20, 20, 25, 10, 30]
+      colWidths: [20, 20, 25, 15, 30]
     });
 
     records.forEach(record => {
@@ -165,7 +180,15 @@ export class Reporter {
         ]);
       } else {
         record.urlChecks.forEach((check, index) => {
-          const statusText = check.isHealthy ? chalk.green('HEALTHY') : chalk.red('BROKEN');
+          let statusText: string;
+          if (check.isHealthy) {
+            statusText = chalk.green('HEALTHY');
+          } else if (check.error === 'URL not available in record') {
+            statusText = chalk.gray('NOT_AVAILABLE');
+          } else {
+            statusText = chalk.red('BROKEN');
+          }
+          
           const details = check.isHealthy ? 
             `${check.responseTime}ms` : 
             check.error || `HTTP ${check.status}`;
@@ -293,7 +316,15 @@ export class Reporter {
         csvRows.push(`"${result.record.Name}","${result.record.Id}","No URLs","No URLs","","BROKEN","No URLs found","",${result.overallHealth}`);
       } else {
         result.urlChecks.forEach(check => {
-          const status = check.isHealthy ? 'HEALTHY' : 'BROKEN';
+          let status: string;
+          if (check.isHealthy) {
+            status = 'HEALTHY';
+          } else if (check.error === 'URL not available in record') {
+            status = 'NOT_AVAILABLE';
+          } else {
+            status = 'BROKEN';
+          }
+          
           const error = check.error || '';
           const responseTime = check.responseTime || '';
           const displayName = urlTypeDisplayNames[check.urlType] || check.urlType.replace('__c', '');

@@ -22,7 +22,7 @@ export const config = {
   monitoring: {
     maxConcurrentChecks: parseInt(process.env.MAX_CONCURRENT_CHECKS || '10'),
     requestTimeoutMs: parseInt(process.env.REQUEST_TIMEOUT_MS || '30000'),
-    retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '3')
+    retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '1')
   } as MonitoringConfig,
 
   // Output Configuration

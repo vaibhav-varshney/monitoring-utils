@@ -59,34 +59,69 @@ class MonitoringService {
         for (const urlType of urlTypes) {
             const url = record[urlType];
             if (url && url.trim()) {
+                // URL exists - check it normally
                 urlPromises.push(this.urlChecker.checkURLsWithRetry(url.trim(), urlType));
+            }
+            else {
+                // URL is empty/null - create a "not available" result
+                urlPromises.push(Promise.resolve({
+                    url: '',
+                    urlType,
+                    isHealthy: false,
+                    error: 'URL not available in record',
+                    responseTime: 0
+                }));
             }
         }
         // Execute all URL checks for this record in parallel
-        if (urlPromises.length > 0) {
-            const results = await Promise.allSettled(urlPromises);
-            results.forEach(result => {
-                if (result.status === 'fulfilled') {
-                    urlChecks.push(result.value);
-                }
-            });
-        }
+        const results = await Promise.allSettled(urlPromises);
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                urlChecks.push(result.value);
+            }
+            else {
+                // Handle any unexpected promise rejections
+                urlChecks.push({
+                    url: '',
+                    urlType: 'HTML_Source__c', // Default fallback
+                    isHealthy: false,
+                    error: 'Unexpected error during URL check',
+                    responseTime: 0
+                });
+            }
+        });
         // Determine overall health
         let overallHealth = 'healthy';
         if (urlChecks.length === 0) {
             overallHealth = 'broken';
         }
         else {
+            const availableUrlChecks = urlChecks.filter(check => check.error !== 'URL not available in record');
             const healthyCount = urlChecks.filter(check => check.isHealthy).length;
             const totalCount = urlChecks.length;
-            if (healthyCount === 0) {
+            const availableCount = availableUrlChecks.length;
+            if (availableCount === 0) {
+                // No URLs available at all
                 overallHealth = 'broken';
             }
-            else if (healthyCount < totalCount) {
+            else if (healthyCount === 0) {
+                // URLs available but none are healthy
+                overallHealth = 'broken';
+            }
+            else if (healthyCount < availableCount) {
+                // Some available URLs are healthy, some are not
                 overallHealth = 'partial';
             }
+            else if (availableCount < totalCount) {
+                // All available URLs are healthy, but some URLs are missing
+                overallHealth = 'partial';
+            }
+            // else: all URLs are available and healthy = 'healthy' (default)
         }
-        console.log(`✅ Processed ${record.Name}: ${overallHealth} (${urlChecks.filter(c => c.isHealthy).length}/${urlChecks.length} URLs healthy)`);
+        const healthyUrlCount = urlChecks.filter(c => c.isHealthy).length;
+        const availableUrlCount = urlChecks.filter(c => c.error !== 'URL not available in record').length;
+        const totalUrlCount = urlChecks.length;
+        console.log(`✅ Processed ${record.Name}: ${overallHealth} (${healthyUrlCount}/${totalUrlCount} URLs healthy, ${availableUrlCount} available)`);
         return {
             record,
             urlChecks,
@@ -102,7 +137,7 @@ class MonitoringService {
         const urlTypeSummary = {};
         const urlTypes = ['Component_Screenshot_URL__c', 'HTML_Source__c', 'Screenshot_URL__c'];
         for (const urlType of urlTypes) {
-            urlTypeSummary[urlType] = { total: 0, healthy: 0, broken: 0 };
+            urlTypeSummary[urlType] = { total: 0, healthy: 0, broken: 0, notAvailable: 0 };
         }
         // Count URL statistics
         results.forEach(result => {
@@ -112,6 +147,9 @@ class MonitoringService {
                     summary.total++;
                     if (check.isHealthy) {
                         summary.healthy++;
+                    }
+                    else if (check.error === 'URL not available in record') {
+                        summary.notAvailable++;
                     }
                     else {
                         summary.broken++;
@@ -135,9 +173,9 @@ class MonitoringService {
             partialRecords: 0,
             brokenRecords: 0,
             urlTypeSummary: {
-                'Component_Screenshot_URL__c': { total: 0, healthy: 0, broken: 0 },
-                'HTML_Source__c': { total: 0, healthy: 0, broken: 0 },
-                'Screenshot_URL__c': { total: 0, healthy: 0, broken: 0 }
+                'Component_Screenshot_URL__c': { total: 0, healthy: 0, broken: 0, notAvailable: 0 },
+                'HTML_Source__c': { total: 0, healthy: 0, broken: 0, notAvailable: 0 },
+                'Screenshot_URL__c': { total: 0, healthy: 0, broken: 0, notAvailable: 0 }
             },
             detailedResults: []
         };
