@@ -90,11 +90,28 @@ class URLChecker {
             return false;
         }
     }
-    getCookiesForDataStore() {
-        // Simple manual cookie configuration
+    async getCookiesForDataStore() {
+        // Option 1: Use automated JWT token retrieval (preferred)
+        if (config_1.config.dataStore.useAutoAuth) {
+            try {
+                const jwtToken = await config_1.authManager.getJWTToken();
+                return config_1.authManager.formatTokenAsCookie(jwtToken);
+            }
+            catch (error) {
+                console.error('❌ Failed to get JWT token automatically:', error);
+                // Fallback to manual cookies if available
+                if (config_1.config.dataStore.cookies) {
+                    console.log('🔄 Falling back to manual cookies from environment');
+                    return config_1.config.dataStore.cookies;
+                }
+                // No fallback available
+                throw error;
+            }
+        }
+        // Option 2: Use manual cookies from environment (legacy)
         const cookies = config_1.config.dataStore.cookies;
         if (!cookies) {
-            console.log('🍪 No data store cookies configured');
+            console.log('🍪 No data store authentication configured');
             return '';
         }
         return cookies;
@@ -126,14 +143,29 @@ class URLChecker {
                     responseTime: Date.now() - startTime
                 };
             }
-            // Get cookies for data store authentication
-            const cookies = this.getCookiesForDataStore();
+            // Attempt to check the URL with authentication (including retry logic)
+            return await this.checkAbsctlURLWithRetry(url, urlType, filename, runID, startTime);
+        }
+        catch (error) {
+            return {
+                url,
+                urlType,
+                isHealthy: false,
+                error: `URL parsing error: ${error.message || String(error)}`,
+                responseTime: Date.now() - startTime
+            };
+        }
+    }
+    async checkAbsctlURLWithRetry(url, urlType, filename, runID, startTime, isRetry = false) {
+        try {
+            // Get authentication cookies (automated or manual)
+            const cookies = await this.getCookiesForDataStore();
             // Create temporary directory for download
             const tempDir = path_1.default.join(process.cwd(), 'temp-downloads');
             await promises_1.default.mkdir(tempDir, { recursive: true });
-            // Build absctl command with cookies if available
-            let command = `absctl autobuild:download-logs -r ${runID} -f ${filename} -d ${tempDir}`;
-            // Add cookie environment variable or header if cookies are available
+            // Build absctl command
+            const command = `absctl autobuild:download-logs -r ${runID} -f ${filename} -d ${tempDir}`;
+            // Add cookie environment variable if available
             const env = { ...process.env };
             if (cookies) {
                 env.COOKIE = cookies;
@@ -201,17 +233,35 @@ class URLChecker {
                 }
             }
             catch (execError) {
-                // If cookie authentication failed, provide helpful error message
                 const errorMessage = execError.message || String(execError);
                 const isAuthError = errorMessage.toLowerCase().includes('auth') ||
                     errorMessage.toLowerCase().includes('unauthorized') ||
-                    errorMessage.toLowerCase().includes('forbidden');
+                    errorMessage.toLowerCase().includes('forbidden') ||
+                    errorMessage.toLowerCase().includes('invalid token') ||
+                    errorMessage.toLowerCase().includes('token expired');
+                // If it's an auth error and we're using auto-auth and haven't retried yet, try refreshing the token
+                if (isAuthError && config_1.config.dataStore.useAutoAuth && !isRetry) {
+                    console.log('🔄 Authentication failed, attempting to refresh JWT token...');
+                    try {
+                        await config_1.authManager.refreshToken();
+                        return await this.checkAbsctlURLWithRetry(url, urlType, filename, runID, startTime, true);
+                    }
+                    catch (refreshError) {
+                        return {
+                            url,
+                            urlType,
+                            isHealthy: false,
+                            error: `Authentication failed even after token refresh: ${errorMessage}`,
+                            responseTime: Date.now() - startTime
+                        };
+                    }
+                }
                 return {
                     url,
                     urlType,
                     isHealthy: false,
                     error: isAuthError ?
-                        `absctl authentication failed: ${errorMessage} (check DATA_STORE_COOKIES configuration)` :
+                        `absctl authentication failed: ${errorMessage}` :
                         `absctl command failed: ${errorMessage}`,
                     responseTime: Date.now() - startTime
                 };
@@ -221,12 +271,13 @@ class URLChecker {
                 await promises_1.default.rmdir(tempDir, { recursive: true }).catch(() => { });
             }
         }
-        catch (error) {
+        catch (authError) {
+            // Error getting authentication
             return {
                 url,
                 urlType,
                 isHealthy: false,
-                error: `URL parsing error: ${error.message || String(error)}`,
+                error: `Authentication setup failed: ${authError.message || String(authError)}`,
                 responseTime: Date.now() - startTime
             };
         }

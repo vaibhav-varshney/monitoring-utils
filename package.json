@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "monitor": "npm run build && npm start"
+    "monitor": "ts-node src/pre-monitor.ts && npm run build && npm start",
+    "pre-monitor": "ts-node src/pre-monitor.ts",
+    "test-auth": "ts-node src/test-auth.ts"
   },
   "keywords": ["monitoring", "salesforce", "url-health"],
   "author": "",

@@ -3,11 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.config = void 0;
+exports.config = exports.authManager = void 0;
 exports.validateConfig = validateConfig;
 const dotenv_1 = __importDefault(require("dotenv"));
+const auth_manager_1 = require("./auth-manager");
 // Load environment variables
 dotenv_1.default.config();
+// Create a singleton auth manager instance
+exports.authManager = new auth_manager_1.AuthManager();
 exports.config = {
     // Salesforce Configuration
     salesforce: {
@@ -15,10 +18,13 @@ exports.config = {
         password: process.env.SF_PASSWORD || 'Test#12345ACVN43pz1R5ohlQJJuYGkNx6e',
         loginUrl: process.env.SF_LOGIN_URL || 'https://gus--aquatest.sandbox.lightning.force.com'
     },
-    // Data Store Configuration (for absctl/HTML_Source__c URLs)
+    // Data Store Configuration (now automated via absctl)
     dataStore: {
-        cookies: process.env.DATA_STORE_COOKIES || '', // Manual cookie string
-        sessionId: process.env.DATA_STORE_SESSION_ID || '' // Alternative: just session ID
+        // Legacy fallback - if someone still wants to use manual cookies
+        cookies: process.env.DATA_STORE_COOKIES || '',
+        sessionId: process.env.DATA_STORE_SESSION_ID || '',
+        // New: Enable automatic JWT token retrieval
+        useAutoAuth: process.env.USE_AUTO_AUTH !== 'false' // Defaults to true, can be disabled
     },
     // Monitoring Configuration
     monitoring: {
@@ -52,6 +58,13 @@ function validateConfig() {
     }
     if (exports.config.monitoring.retryAttempts < 0) {
         errors.push('RETRY_ATTEMPTS must be a non-negative number');
+    }
+    // Check auth configuration
+    if (exports.config.dataStore.useAutoAuth && !exports.config.dataStore.cookies) {
+        console.log('📡 Auto-authentication enabled - will use absctl to retrieve JWT tokens automatically');
+    }
+    else if (!exports.config.dataStore.useAutoAuth && !exports.config.dataStore.cookies) {
+        console.warn('⚠️  No authentication configured for data store URLs. Set DATA_STORE_COOKIES or enable auto-auth');
     }
     if (errors.length > 0) {
         console.error('❌ Configuration errors:');

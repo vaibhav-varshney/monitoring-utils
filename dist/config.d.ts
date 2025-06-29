@@ -1,4 +1,6 @@
 import { MonitoringConfig } from './types';
+import { AuthManager } from './auth-manager';
+export declare const authManager: AuthManager;
 export declare const config: {
     salesforce: {
         username: string;
@@ -8,6 +10,7 @@ export declare const config: {
     dataStore: {
         cookies: string;
         sessionId: string;
+        useAutoAuth: boolean;
     };
     monitoring: MonitoringConfig;
     output: {

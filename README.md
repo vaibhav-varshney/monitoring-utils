@@ -30,10 +30,11 @@ A comprehensive monitoring utility that checks the health of URLs in Salesforce 
    # Salesforce credentials (for SOQL queries)
    SF_USERNAME=your_salesforce_username
    SF_PASSWORD=your_salesforce_password
-   SF_LOGIN_URL=https://test.salesforce.com
+   SF_LOGIN_URL=https://gus--aquatest.sandbox.my.salesforce.com
    
-   # Data store cookies (for absctl/HTML_Source__c URLs)
-   DATA_STORE_COOKIES="session=abc123; auth=xyz789"
+   # Data store authentication is now FULLY AUTOMATED! 
+   # Just run: npm run monitor
+   # No manual configuration needed!
    ```
 
 ## Prerequisites
@@ -42,31 +43,64 @@ A comprehensive monitoring utility that checks the health of URLs in Salesforce 
 - Salesforce credentials with access to AQUA_ViolationGroup__c objects
 - For HTML_Source__c URLs using absctl: `absctl` command-line tool installed
 
-### Installing absctl (if needed)
+### Installing absctl
 
-If your HTML_Source__c fields contain URLs that require the `absctl` command, you'll need to install it:
+If your HTML_Source__c fields contain URLs that require the `absctl` command:
 
 ```bash
 # Check if absctl is installed
 which absctl
 
 # If not installed, follow your organization's instructions for installing absctl
-# The utility will gracefully handle missing absctl and report it as an error
 ```
+
+**🎉 Fully Automated**: The monitoring utility now **automatically handles authentication**! 
+- No manual `absctl auth:login` needed
+- No manual cookie configuration required  
+- Authentication is checked and performed automatically when you run `npm run monitor`
 
 ## Usage
 
 ### Basic Usage
 
-Run the monitoring utility:
+#### Test Authentication (Optional)
+
+If you want to test the authentication setup separately:
 
 ```bash
-# Build and run
+# Test automated JWT token retrieval
+npm run test-auth
+```
+
+This will verify that:
+- `absctl` is installed and accessible
+- JWT token retrieval is working
+- Token caching is functional
+
+**Note**: This is optional since `npm run monitor` now handles authentication automatically.
+
+#### Run the Monitoring Utility
+
+The monitoring utility now **automatically handles authentication**:
+
+```bash
+# This will automatically:
+# 1. Check if absctl is available
+# 2. Verify if you're already authenticated 
+# 3. Run "absctl auth:login" if needed
+# 4. Build and start the monitoring utility
 npm run monitor
 
-# Or run in development mode
+# Or run in development mode (without auto-auth)
 npm run dev
 ```
+
+**What happens automatically:**
+- ✅ Checks if `absctl` is installed
+- ✅ Verifies existing authentication status  
+- ✅ Runs `absctl auth:login` only if needed
+- ✅ Handles interactive authentication prompts
+- ✅ Continues gracefully if authentication fails
 
 ### Advanced Usage
 
@@ -86,8 +120,9 @@ MAX_CONCURRENT_CHECKS=5 REQUEST_TIMEOUT_MS=60000 npm run monitor
 | `SF_USERNAME` | Salesforce username | - | Yes |
 | `SF_PASSWORD` | Salesforce password | - | Yes |
 | `SF_LOGIN_URL` | Salesforce login URL | `https://test.salesforce.com` | Yes |
-| `DATA_STORE_COOKIES` | Cookie string for data store authentication | - | For HTML_Source__c |
-| `DATA_STORE_SESSION_ID` | Alternative: just session ID | - | For HTML_Source__c |
+| `USE_AUTO_AUTH` | Enable automatic JWT token retrieval via absctl | `true` | No |
+| `DATA_STORE_COOKIES` | **[LEGACY]** Manual cookie string for data store auth | - | Only if auto-auth disabled |
+| `DATA_STORE_SESSION_ID` | **[LEGACY]** Alternative: just session ID | - | Only if auto-auth disabled |
 | `MAX_CONCURRENT_CHECKS` | Maximum concurrent URL checks | `10` | No |
 | `REQUEST_TIMEOUT_MS` | Request timeout in milliseconds | `30000` | No |
 | `RETRY_ATTEMPTS` | Number of retry attempts for failed requests | `3` | No |
@@ -103,8 +138,13 @@ SF_USERNAME=your_username@company.com
 SF_PASSWORD=your_password
 SF_LOGIN_URL=https://test.salesforce.com
 
-# Data Store Configuration (for absctl/HTML_Source__c URLs)
-DATA_STORE_COOKIES="session=abc123; auth=xyz789; csrf=token123"
+# Data Store Authentication (AUTOMATED via absctl)
+# Just run: absctl auth:login
+# No manual configuration needed!
+
+# Advanced: Disable auto-auth if you want to use manual cookies
+# USE_AUTO_AUTH=false
+# DATA_STORE_COOKIES="session=abc123; auth=xyz789; csrf=token123"
 
 # Monitoring Configuration
 MAX_CONCURRENT_CHECKS=10
@@ -117,21 +157,42 @@ GENERATE_CSV=true
 OUTPUT_DIR=./reports
 ```
 
-### Getting Data Store Cookies
+### Data Store Authentication
 
-For HTML_Source__c URLs that use absctl, you need to provide authentication cookies:
+#### 🎉 Automatic Authentication (Recommended)
 
-1. **Open your browser** and navigate to your data store service
-2. **Login** to the service normally
-3. **Open Developer Tools** (F12)
-4. **Go to Network tab** and make any request
-5. **Find a request** in the list and click on it
-6. **Look at Headers** section and find `Cookie:` 
-7. **Copy the entire cookie string** (everything after `Cookie: `)
-8. **Paste it** in your `.env` file as `DATA_STORE_COOKIES`
+For HTML_Source__c URLs that use absctl, authentication is now **completely automated**:
+
+```bash
+# Just run the monitoring utility - that's it!
+npm run monitor
+
+# The system will automatically:
+# ✅ Check if you're already authenticated
+# ✅ Run "absctl auth:login" if needed  
+# ✅ Handle interactive authentication prompts
+# ✅ Retrieve JWT tokens using 'absctl auth:login --show'
+# ✅ Handle token caching and refresh
+# ✅ Retry with fresh tokens if authentication fails
+```
+
+#### Manual Authentication (Legacy)
+
+If you need to disable auto-auth and use manual cookies:
+
+1. Set `USE_AUTO_AUTH=false` in your `.env` file
+2. **Open your browser** and navigate to your data store service
+3. **Login** to the service normally
+4. **Open Developer Tools** (F12) 
+5. **Go to Network tab** and make any request
+6. **Find a request** in the list and click on it
+7. **Look at Headers** section and find `Cookie:` 
+8. **Copy the entire cookie string** (everything after `Cookie: `)
+9. **Paste it** in your `.env` file as `DATA_STORE_COOKIES`
 
 Example:
 ```bash
+USE_AUTO_AUTH=false
 DATA_STORE_COOKIES="sessionid=abc123xyz; csrftoken=def456; auth=ghi789"
 ```
 
@@ -271,16 +332,30 @@ Broken by Type:
    - Check login URL (sandbox vs production)
    - Ensure user has permission to access AQUA_ViolationGroup__c
 
-2. **absctl Command Not Found**
+2. **JWT Token Authentication Issues**
+   - **Not authenticated**: Run `absctl auth:login` to authenticate
+   - **Token expired**: The system will automatically refresh tokens, but you may need to re-authenticate
+   - **absctl not found**: Install absctl and ensure it's in your PATH
+   - **Permission errors**: Ensure your absctl user has proper permissions
+   - **Test first**: Run `npm run test-auth` to verify authentication setup
+
+3. **absctl Command Not Found**
    - Install absctl following your organization's guidelines
-   - Verify absctl is in your PATH
+   - Verify absctl is in your PATH: `which absctl`
+   - Authenticate after installation: `absctl auth:login`
    - The utility will continue with other URLs even if absctl is missing
 
-3. **Timeout Errors**
+4. **Legacy Manual Cookie Issues**
+   - If you disabled auto-auth (`USE_AUTO_AUTH=false`), ensure `DATA_STORE_COOKIES` is set
+   - Update cookies if you get 401/403 errors
+   - Consider re-enabling auto-auth for easier maintenance
+
+5. **Timeout Errors**
    - Increase `REQUEST_TIMEOUT_MS` for slow networks
    - Reduce `MAX_CONCURRENT_CHECKS` to be less aggressive
+   - JWT token retrieval may take longer on first run
 
-4. **Memory Issues**
+6. **Memory Issues**
    - Reduce `MAX_CONCURRENT_CHECKS`
    - Monitor large datasets and consider filtering
 
@@ -314,7 +389,9 @@ npm start
 - `npm run build` - Compile TypeScript to JavaScript
 - `npm start` - Run the compiled application
 - `npm run dev` - Run in development mode with ts-node
-- `npm run monitor` - Build and run the monitoring utility
+- `npm run monitor` - **Auto-authenticate and run the monitoring utility**
+- `npm run pre-monitor` - Just run the authentication setup (without monitoring)
+- `npm run test-auth` - Test automated JWT token authentication
 
 ## License
 

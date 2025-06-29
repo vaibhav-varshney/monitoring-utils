@@ -7,6 +7,7 @@ export declare class URLChecker {
     private isAbsctlURL;
     private getCookiesForDataStore;
     private checkAbsctlURL;
+    private checkAbsctlURLWithRetry;
     checkURLsWithRetry(url: string, urlType: 'Component_Screenshot_URL__c' | 'HTML_Source__c' | 'Screenshot_URL__c'): Promise<URLCheckResult>;
 }
 //# sourceMappingURL=url-checker.d.ts.map
